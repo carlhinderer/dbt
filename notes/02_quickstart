@@ -1,0 +1,398 @@
+-----------------------------------------------------------------------
+| PART 2 - QUICKSTART                                                 |
+-----------------------------------------------------------------------
+
+- Create the Project
+
+    - Make sure you have dbt core installed.  This was installed via pip for us.
+
+        $ dbt --version
+
+
+    - Now, initiate the 'jaffle_shop' project.
+
+        $ dbt init jaffle_shop
+        $ cd jaffle_shop
+
+
+    - Finally, update the following default values in the 'dbt_project.yml' script.
+
+        # dbt_project.yml
+        ---------------------------
+        name: jaffle_shop
+
+        profile: jaffle_shop
+
+        models:
+          jaffle_shop:
+
+
+
+- Connect to BigQuery (or other data source)
+
+    - When developing locally, dbt connects to your DW using a 'profile', which is a yaml file with all
+        the connection details to your warehouse.
+
+        # ~/.dbt/profiles.yml
+        -----------------------------
+        jaffle_shop: # this needs to match the profile in your dbt_project.yml file
+          target: dev
+          outputs:
+            dev:
+              type: bigquery
+              method: service-account
+              keyfile: /Users/BBaggins/.dbt/dbt-tutorial.json   # Full path to keyfile
+              project: grand-highway-265418   # Replace this with your project id
+              dataset: dbt_bbagins   # Replace this with dbt_your_name, e.g. dbt_bilbo
+              threads: 1
+              timeout_seconds: 300
+              location: US
+              priority: interactive
+
+
+    - A similar profile for Redshift looks like:
+
+        jaffle_shop:
+          target: dev
+          outputs:
+            dev:
+              type: redshift
+              dbname: mydw
+              host: redshift.mydomain.com
+              port: 5439
+              user: "{{ env_var('DBT_USER') }}"
+              password: "{{ env_var('DBT_PASSWORD') }}"
+              schema: dbt
+              threads: 1
+
+
+    - To verify that we can connect to our DW using the configured profile:
+
+        $ dbt debug
+
+
+    - Now, we should be able to perform our first run.  Our sample project has some example models in it,
+        and we'll check that we can run them to make sure everything is in order.
+
+        $ dbt run
+
+        # Output
+        CREATE TABLE (2)
+        CREATE VIEW
+
+
+
+- First Model
+
+    - Here is our first model, which pulls data from dbt's sample 'jaffa_shop' schema.  We'll add this in 
+        a new git branch:
+
+        # models/customers.sql
+        ---------------------------
+        with customers as (
+            select
+                id as customer_id,
+                first_name,
+                last_name
+            from `dbt-tutorial`.jaffle_shop.customers
+        ),
+
+        orders as (
+            select
+                id as order_id,
+                user_id as customer_id,
+                order_date,
+                status
+            from `dbt-tutorial`.jaffle_shop.orders
+        ),
+
+        customer_orders as (
+            select
+                customer_id,
+                min(order_date) as first_order_date,
+                max(order_date) as most_recent_order_date,
+                count(order_id) as number_of_orders
+            from orders
+            group by 1
+        ),
+
+        final as (
+            select
+                customers.customer_id,
+                customers.first_name,
+                customers.last_name,
+                customer_orders.first_order_date,
+                customer_orders.most_recent_order_date,
+                coalesce(customer_orders.number_of_orders, 0) as number_of_orders
+            from customers
+            left join customer_orders using (customer_id)
+        )
+
+        select * from final
+
+
+    - Now, we just need to run the 'dbt run' command.
+
+        $ dbt run
+
+      And we can select from the model in our DW console.
+
+        SELECT * FROM dbt.customers;
+
+
+
+- Change the Way the Model is Materialized
+
+    - One of the most powerful features of dbt is that you can change the way a model is materialized in
+        your DW with a config value.
+
+
+    - By default, everything gets created as a view.  You can override this by materializing everything as
+        a table.
+
+        # dbt_project.yml
+        --------------------------
+        models:
+          jaffle_shop:
+            materialized: table
+            example:
+              +materialized: view
+
+
+    - Now, we can 'dbt run' and the customers model will be built as a table.  dbt will run a 'DROP VIEW',
+        then a 'CREATE TABLE AS' command.
+
+
+    - We can edit 'models/customers.sql' to override the 'dbt_project.yml' file for the customers model
+        only.
+
+        # models/customers.sql
+        ---------------------------
+        {{
+          config(
+            materialized='view'
+          )
+        }}
+
+        with customers as (
+            select
+                id as customer_id
+                ...
+        )
+
+
+    - Now, we'll run 'dbt run', and the 'customers' model is built as a view.
+
+        $ dbt run
+
+
+    - For this command to take effect in your DW:
+
+        $ dbt run --full-refresh
+
+
+
+- Delete the Example Models
+
+    - Now, we can delete the example models that dbt created when we initialized the project.
+
+        - Delete the 'models/example' directory.
+        - Delete the 'example:' key from 'dbt_project.yml'.
+
+
+
+- Build Models on Top of Other Models
+
+    - As a best practice, we want to separate logic that cleans up data from logic that transforms data.
+        We've already started doing this with CTEs.
+
+
+    - We can separate logic out into separate models and use the 'ref' function to build models on top
+        of other models.
+
+
+    - Create a new SQL file called 'models/stg_customers.sql' with the SQL from the 'customers' CTE in the
+        original query.  Create a new sql file called 'models/stg_orders.sql' with the SQL from the 
+        'orders' CTE in the original query.
+
+        # models/stg_customers.sql
+        ---------------------------------
+        select
+            id as customer_id,
+            first_name,
+            last_name
+        from `dbt-tutorial`.jaffle_shop.customers
+
+
+        # models/stg_orders.sql
+        --------------------------------
+        select
+            id as order_id,
+            user_id as customer_id,
+            order_date,
+            status
+
+        from `dbt-tutorial`.jaffle_shop.orders
+
+
+    - Now, we'll edit the SQL in our 'models/customers.sql' file.
+
+        # models/customers.sql
+        --------------------------------
+        with customers as (
+            select * from {{ ref('stg_customers') }}
+        ),
+
+        orders as (
+            select * from {{ ref('stg_orders') }}
+        ),
+
+        customer_orders as (
+            select
+                customer_id,
+                min(order_date) as first_order_date,
+                max(order_date) as most_recent_order_date,
+                count(order_id) as number_of_orders
+            from orders
+            group by 1
+        ),
+
+        final as (
+            select
+                customers.customer_id,
+                customers.first_name,
+                customers.last_name,
+                customer_orders.first_order_date,
+                customer_orders.most_recent_order_date,
+                coalesce(customer_orders.number_of_orders, 0) as number_of_orders
+            from customers
+            left join customer_orders using (customer_id)
+        )
+
+        select * from final
+
+
+    - Now, we can execute 'dbt run', and separate views are created for 'stg_customers', 'stg_orders', and
+        'customers'.  dbt inferred the order in which to run these models.  Because 'customers' depends
+        on 'stg_customers' and 'stg_orders', dbt builds 'customers' last.  These dependencies do not need
+        to be explicitly defined.
+
+        $ dbt run
+
+
+
+- Next Steps
+
+    - Write some bad SQL to cause an error.  Can you debug the error?
+
+    - How do you run only a single model at a time?
+
+    - You can try grouping your models with a 'stg_' prefix into a 'staging' subdirectory.  You can
+        configure the 'staging' models to be views and run only the 'staging' models.
+
+    - The 'target' subdirectory contains all of the compiled SQL.  The 'run' directory shows the CREATE OR
+        REPLACE statements that are running, which are select statements wrapped in the correct DDL.
+
+    - The 'logs' file shows how dbt logs all of the action happening in your project.
+
+
+
+- Adding Tests to Models
+
+    - Adding tests to a project helps validate that your models are working correctly.  To add tests to
+        a model, create a new file 'models/schema.yml'.
+
+        # models/schema.yml
+        ----------------------------
+        version: 2
+
+        models:
+          - name: customers
+            columns:
+              - name: customer_id
+                tests:
+                  - unique
+                  - not_null
+
+          - name: stg_customers
+            columns:
+              - name: customer_id
+                tests:
+                  - unique
+                  - not_null
+
+          - name: stg_orders
+            columns:
+              - name: order_id
+                tests:
+                  - unique
+                  - not_null
+              - name: status
+                tests:
+                  - accepted_values:
+                      values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
+              - name: customer_id
+                tests:
+                  - not_null
+                  - relationships:
+                      to: ref('stg_customers')
+                      field: customer_id
+
+
+    - Run 'dbt test' to confirm that all the tests pass.
+
+        $ dbt test
+
+
+
+- Document Your Models
+
+    - To add some basic documentation to our project, update the 'models/schema.yml' file to include some
+        descriptions.
+
+        # models/schema.yml
+        ----------------------------
+        version: 2
+
+        models:
+          - name: customers
+            description: One record per customer
+            columns:
+              - name: customer_id
+                description: Primary key
+                tests:
+                  - unique
+                  - not_null
+              - name: first_order_date
+                description: NULL when a customer has not yet placed an order.
+
+          - name: stg_customers
+            description: This model cleans up customer data
+            columns:
+              - name: customer_id
+                description: Primary key
+                tests:
+                  - unique
+                  - not_null
+
+          - name: stg_orders
+            description: This model cleans up order data
+            columns:
+              - name: order_id
+                description: Primary key
+                tests:
+                  - unique
+                  - not_null
+              - name: status
+                tests:
+                  - accepted_values:
+                      values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
+
+
+    - Now, to generate the documentation:
+
+        # Generate a JSON file with documentation for the project
+        $ dbt docs generate
+
+        # Launch the documentation in a local website
+        $ dbt docs serve

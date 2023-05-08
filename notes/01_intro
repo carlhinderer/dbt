@@ -42,4 +42,17 @@
         queries, like if statements and for loops.  This also allows repeated SQL to be shared through
         macros.
 
-    - 
+    - dbt provides a mechanism to implement transformations in stages through the 'ref function'.  Rather
+        than selecting from existing tables, you can select from another model.
+
+    - There is a mechanism for writing, version controlling, and sharing documentation for your models.
+        You can write descriptions (in either plain text or markdown) for each model and field.
+
+    - You can write tests that make assertions about the data.
+
+    - dbt ships with a package manager, which allows for both public and private repositories to be used.
+
+    - Seed files can be saved as a CSV file in the project and get automatically loaded into your DW
+        using the 'seed' command.
+
+    - There is a mechanism to snapshot raw data for a point in time using 'snapshots'.
