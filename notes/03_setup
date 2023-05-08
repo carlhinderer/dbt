@@ -1,0 +1,108 @@
+-----------------------------------------------------------------------
+| PART 3 - SETUP                                                      |
+-----------------------------------------------------------------------
+
+- The CLI
+
+    - dbt ships with a CLI for running your dbt project.  Here is a list of commands:
+
+        build            # Build and test all selected resources (models, seeds, snapshots, tests)
+        clean            # Deletes artifacts present in the dbt project
+        compile          # Compiles (but does not run) the models in a project
+        debug            # Debugs dbt connections and projects
+        deps             # Downloads dependencies for a project
+
+        docs             # Generates documentation for a project
+        init             # Initializes a new dbt project
+        list             # Lists resources defined in a dbt project
+        parse            # Parses a project and writes detailed timing info
+        rpc              # Runs an RPC server that clients can submit queries to
+
+        run              # Runs the models in a project
+        run-operation    # Invoke a macro, including running arbitrary maintenance SQL against the database
+        seed             # Loads CSV files into the database
+        show             # Preview table rows post-transformation
+        snapshot         # Executes "snapshot" jobs defined in a project
+        source           # Provides tools for working with source data (ie validating that sources are "fresh")
+        test             # Executes tests defined in a project
+
+
+
+- Installation
+
+    - Installation can be done several different ways:
+
+        - Homebrew
+        - pip
+        - Docker
+        - From source
+
+
+    - For installing with pip, if you know which adapter you will be using, you can install it as
+        'dbt-<adapter>'.
+
+        # Install dbt-core and dbt-postgres
+        $ pip install dbt-postgres
+
+        # All possible options
+        $ pip install dbt-core \
+                      dbt-postgres \
+                      dbt-redshift \
+                      dbt-snowflake \
+                      dbt-bigquery \
+                      dbt-trino \
+                      dbt-databricks
+
+
+
+- Connection Profiles
+
+    - When you invoke dbt from the command line, dbt parses your 'dbt_project.yml', and obtains the 'profile'
+        name, which dbt needs to connect to your DW.  dbt will search the current working directory, and
+        will default to the '~/.dbt' directory if not found.  If you want to check this file into source
+        control, sensitive fields can be put into environment variables.
+
+        # ~/.dbt/profiles.yml
+        ----------------------------
+        # example profiles.yml file
+        jaffle_shop:
+          target: dev
+          outputs:
+            dev:
+              type: postgres
+              host: localhost
+              user: alice
+              password: <password>
+              port: 5432
+              dbname: jaffle_shop
+              schema: dbt_alice
+              threads: 4
+
+
+    - A profile consists of 'targets'.  Each target specifies the type of DW you are connecting to, the
+        creds to connect to the DW, and some dbt-specific configurations.
+
+
+    - To test your connection:
+
+        $ dbt debug
+
+
+    - To run commands in your own schema, can change the schame name in the profile to:
+
+        $ schema: dbt_myname
+
+
+    - To point to a different directory to look in for the 'profiles.yml' file:
+
+        $ dbt run --profiles-dir /path/to/directory
+
+
+
+- Run Your dbt Projects
+
+    - Commands commonly used are:
+
+        $ dbt run              # Runs the models defined in your project
+        $ dbt build            # Builds and tests your selected resources (models, seeds, snapshots, tests)
+        $ dbt test             # Executes the tests defined in the project
