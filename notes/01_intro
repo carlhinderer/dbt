@@ -1,0 +1,45 @@
+-----------------------------------------------------------------------
+| PART 1 - INTRODUCTION                                               |
+-----------------------------------------------------------------------
+
+- What is dbt?
+
+    - dbt is a transformation workflow that can be used to modularize and centralize your analytics code
+        while providing your team with guardrails typically found in software engineering workflows.
+
+    - dbt helps you avoid boilerplate DML and DDL by managing transactions, dropping tables, and managing
+        schema changes.  It helps build reusable data models that can be referenced in subsequent work.
+
+    - You can change a model in one place, and that change will propogate to all its dependencies.
+
+    - Mature source control processes like branching, pull requests, and code reviews can be used.
+
+    - Data quality tests can be written on the underlying data.
+
+
+
+- dbt Products
+
+    - dbt cloud is a hosted version of dbt with a web-based UI.  It also has extra features, such as
+        metadata, an in-app job scheduler, and an IDE.
+
+    - dbt Core is an open-source tool that enables data teams to transform using analytics engineering
+        best practices.
+
+
+
+- dbt Features
+
+    - As a dbt user, your main focus is on writing models (ie select queries) that reflect core business
+        logic.  There is no need to write boilerplate code to create tables and views, or to define the
+        order of execution of your models.  dbt handles turning those models into objects in your warehouse
+        for you.
+
+    - For each model you create, you can easily configure a 'materialization', which represents the build
+        strategy for your select query.
+
+    - SQL files can contain Jinja templating.  This provides a way to use control structures in your
+        queries, like if statements and for loops.  This also allows repeated SQL to be shared through
+        macros.
+
+    - 
