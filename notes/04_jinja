@@ -1,0 +1,306 @@
+-----------------------------------------------------------------------
+| PART 4 - JINJA                                                      |
+-----------------------------------------------------------------------
+
+- Variable Substitution
+
+    - Jinja2 is a feature-rich templating language used in the Python ecosystem.
+        (https://ttl255.com/jinja2-tutorial-part-1-introduction-and-variable-substitution/)
+
+
+    - This is an example of variable substitution.  Anything found between the double opening braces and
+        double closing braces tells the engine to evaluate and print it.
+
+        hostname {{ hostname }}
+
+
+    - The variable values can be populated with a Python script, an Ansible playbook, or with built-in support
+        from a web framework like Flask or Django.
+
+
+    - Jinja provides a handy way of accessing dictionary keys using dot notation.  Note that this only works 
+        if the key doesn't have special characters.
+
+        interface {{ interface.name }}
+
+
+    - To add comments to templates:
+
+        {# This is a comment... #}
+
+
+    
+- Loops and Conditionals
+
+    - Control structures use blocks enclosed by {% and %} characters.
+
+
+    - Here is a for loop:
+
+        {% for my_item in my_collection %}
+        ...
+        {% endfor %}
+
+
+    - To loop over dictionary entries:
+
+        {% for iname, idata in interfaces.items() -%}
+        interface {{ iname }}
+        description {{ idata.description }}
+        ip address {{ idata.ipv4_address }}
+        {% endfor %}
+
+
+    - To sort dictionary entries by key:
+
+        {% for k, v in my_dict | dictsort -%}
+
+
+    - To sort dictionary entries by value:
+
+        {% for k, v in my_dict | dictsort(by='value') -%}
+
+
+    - To use conditionals:
+
+        {% if routing_protocol == 'bgp' -%}
+        {%- elif routing_protocol == 'ospf' -%}
+        {%- else -%}
+        {%- endif %}
+
+
+    - Logical Operators:
+
+        {% if x and y -%}
+        {% if x or z -%}
+        {% if not z -%}
+
+
+    - As with Python, strings, lists, dictionaries, etc. evaluate to True if they're not empty.  If they're
+        empty, they evaluate to False.
+
+
+    - There are tests that can be used with variables:
+
+        boolean   - check is variable is a boolean
+        integer   - check if variable is an integer
+        float     - check if variable is a float
+        number    - check if variable is number, will return True for both integer and float
+        string    - check if variable is a string
+        mapping   - check if variable is a mapping, i.e. dictionary
+        iterable  - check if variable can be iterated over, will match string, list, dict, etc.
+        sequence  - check if variable is a sequence
+
+        {{ hostname is string }}
+
+
+    - The 'in' operator can be used to check membership.
+
+        {% if 'Loopback0' in interfaces -%}
+
+
+
+- Whitespace Control
+
+    - Controlling whitespace is one of the trickier parts of Jinja.  For instance, here is a trivial
+        template:
+
+        Starting line
+        {# Just a comment #}
+        Line after comment
+
+      Here it is rendered, with a blank line where the comment is.
+
+        Starting line
+
+        Line after comment
+
+
+    - When a template is rendered, all of the whitespaces remain in place.  If there are spaces, tabs,
+        or newlines before or after blocks, they will all be rendered.
+
+
+    - There are broadly 3 ways to control whitespace generation in our templates:
+
+        1. Enable one or both of the rendering options 'trim_blocks' or 'lstrip_blocks'
+        2. Manually strip whitespaces by adding a minus sign '-' to the start or end of a block
+        3. Apply indentation inside of Jinja blocks
+
+
+    - The '-' operator is used to manually strip whitespace from blocks, comments, or variable expressions.
+        You need to add it to the start or end of a given expression to remove whitespaces before or after
+        the block, respectively.
+
+
+
+- Filters
+
+    - Jinja filters are used to transform data held in variables.  The use the | symbol.
+
+        {{ first_name | capitalize }}
+
+
+    - Here is an example of a filter that takes multiple arguments:
+
+        {{ name_servers | join(" ") }}
+
+
+    - Filters can be chained:
+
+        {{ scraped_acl | first | trim }}
+
+
+    - You can also write your own filters if desired.
+
+
+    - Here are some of the most useful built-in filters:
+
+        batch
+        center
+        default
+        dictsort
+        float
+        groupby
+        int
+        join
+        map
+        reject
+        rejectattr
+        select
+        tojson
+        unique
+
+
+    - To write your own filter:
+
+        import hashlib
+
+        def my_hash_filter(value, hash_type='sha1'):
+            hash_func = getattr(hashlib, hash_type, None)
+            return hash_func(value.encode('utf-8')).hexdigest()
+
+
+    - To use the custom filter:
+
+        import jinja2
+        from hash_filter import my_hash_filter
+
+        env = jinja2.Environment()
+        env.filters["hash"] = my_hash_filter
+
+        tmpl_string = """MD5 hash of '$ecret': {{ '$ecret' | hash('md5') }}"""
+        tmpl = env.from_string(tmpl_string)
+
+        print(tmpl.render())
+
+
+
+- Macros
+
+    - Macros are used to encapsulate logic, similar to functions.  Inside of macros, we can use any of the
+        Jinja features and constructs.
+
+
+    - Here is a simple macro used to add a banner:
+
+        {% macro banner() -%}
+        BANNER TEXT HERE
+        ...
+        {% endmacro -%}
+
+        {{ banner() }}
+
+
+    - To accept parameters in a macro:
+
+        {% macro def_if_desc(if_role) -%}
+        Unused port, dedicated to {{ if_role }} devices
+        {%- endmacro -%}
+
+        {% for intf in interfaces -%}
+        interface {{ intf.name }}
+          description {{ def_if_desc(intf.role) }}
+        {% endfor -%}
+
+
+    - You can use any Jinja constructs inside of a macro:
+
+        {% macro peer_ip(local_intf) -%}
+        {% set local_ip = interfaces[local_intf].ip_add -%}
+        {% set fst_ip = local_ip | ipaddr(0) -%}
+        {% if fst_ip == local_ip -%}
+        {{ fst_ip | ipaddr(1) | ipaddr('address') -}}
+        {% else -%}
+        {{ fst_ip | ipaddr('address') -}}
+        {%- endif -%}
+        {% endmacro -%}
+
+        router bgp {{ bgp.as_no }}
+        {%- for peer in bgp.peers -%}
+        {%- set bgp_peer_ip = peer_ip(peer.intf) %}
+         neighbor {{ bgp_peer_ip }} remote-as {{ peer.as_no }}
+         neighbor {{ bgp_peer_ip }} description {{ interfaces[peer.intf].peer }}
+        {%- endfor %}
+
+
+    - You can pass macros as arguments to other macros.
+
+
+    - We can also import macros that are defined in other files.
+
+        # ip_funcs.j2
+        -----------------------
+        % macro ip_w_wc(ip_net) -%}
+        {{ ip_net|ipaddr('network') }} {{ ip_net|ipaddr('hostmask')}}
+        {%- endmacro -%}
+
+        # Template that imports file
+        {% import 'ip_funcs.j2' as ipfn -%}
+
+        {{ ipfn.ip_w_wc(line.ip) }}
+
+
+
+- Include and Import
+
+    - Using 'include' and 'import' statements, we can split templates into smaller logical units.  This
+        increases reusability and maintainability.
+
+
+    - The 'include' statement allows you to break large templates into smaller logical units that can then be
+        assembled in the final template.  This is a good way to break up large templates into smaller, more
+        manageable chunks.
+
+        {% include 'path_to_template_file' %}
+
+
+    - For an example of using 'include':
+
+        test_template.j2
+        ----------------------
+        Here is some text
+
+        final_template.j2
+        ----------------------
+        {% include 'users.j2' %}
+
+        The test_template is rendered inside of final_template.
+
+
+    - The 'import' statement is used to access macros kept in other templates.  This is different from 'include'
+        in that no rendering takes place.  There are 3 ways to import macros:
+
+        1. Import the whole template and assign it to a variable.  Macros are attributes of the variable.
+
+            {% import 'macros/ip_funcs.j2' as ipfn %}
+            {{ ipfn.ip_w_wc('10.0.0.0/24') }}
+
+        2. Import a specific macro into the current namespace.
+
+            {% from 'macros/ip_funcs.j2' import ip_w_wc, ip_w_pfxlen %}
+            {{ ip_w_wc('10.0.0.0/24') }}
+
+        3. Import a specific macro and give it an alias.
+
+            {% from 'macros/ip_funcs.j2' import ip_w_wc as ipwild %}
+            {{ ipwild('10.0.0.0/24') }}
