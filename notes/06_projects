@@ -224,7 +224,6 @@
 
 
 
-
 - Python Models
 
     - Python models are supported on Snowflake, Databricks, and BigQuery.  Databricks and BigQuery's Dataproc
@@ -243,3 +242,184 @@
 
             orders_df = dbt.ref("stg_orders")
             return orders_df
+
+
+
+- Seeds
+
+    - Seeds are CSV files in the 'seeds' directory that can be loaded into the warehouse using the 'dbt seed'
+        command.  They can be useful for static data which changes infrequently.
+
+    
+    - To add a seed file:
+
+        seeds/country_codes.csv
+        ----------------------------
+        country_code,country_name
+        US,United States
+        CA,Canada
+        GB,United Kingdom
+
+
+    - To add the seeds in your target schema in a table named 'country_codes':
+
+        $ dbt seed
+
+
+    - Now, you can refer to the table that was created:
+
+        select * from {{ ref('country_codes') }}
+
+
+    - You can add documentation and tests for seeds by declaring properties.
+
+
+
+- Snapshots
+
+    - Analyts often need to 'look back in time' at previous data states in their mutable tables.  dbt provides
+        a mechanism called 'snapshots' which records changes to a mutable table over time.
+
+
+    - Snapshots implement type-2 SCDs over mutable source tables.  For an example, imagine that you have an 'orders'
+        table where the 'status' field can be overwritten as the order is processed.
+
+        id     status     updated_at
+        -------------------------------
+        1      pending    2019-01-01
+
+        id     status     updated_at
+        -------------------------------
+        1      shipped    2019-01-02
+
+
+    - Here is an example of a snapshot for this table:
+
+        id     status     updated_at     dbt_valid_from     dbt_valid_to
+        -------------------------------------------------------------------
+        1      pending    2019-01-01     2019-01-01         2019-01-02
+        1      shipped    2019-01-02     2019-01-02         null
+
+
+    - In dbt, snapshots are select statements defined within a 'snapshot' block in a .sql file, typically in the
+        'snapshots' directory.
+
+        snapshots/orders_snapshot.sql
+        --------------------------------
+        {% snapshot orders_snapshot %}
+
+        {{
+            config(
+              target_database='analytics',
+              target_schema='snapshots',
+              unique_key='id',
+
+              strategy='timestamp',
+              updated_at='updated_at',
+            )
+        }}
+
+        select * from {{ source('jaffle_shop', 'orders') }}
+
+        {% endsnapshot %}
+
+
+    - When you run the 'dbt snapshot' command:
+
+        1. On the first run, dbt will create the initial snapshot table.  This will be the result set of your
+             select statement, with additional columns 'dbt_valid_from' and 'dbt_valid_to'.  All records will
+             have a 'dbt_valid_to = null'.
+
+        2. On subsequent runs, dbt will check if any records have changed or if any new records have been created.
+             The 'dbt_valid_to' will be updated for any records that have been changed.  The updated records and
+             any new records will be added with 'dbt_valid_to = null'.
+
+
+    - Snapshots can be referenced in downstream models the same way as referencing models.
+
+
+
+- Materializations
+
+    - Materializations are strategies for persisting dbt models in a warehouse.  There are 4 types of
+        materializations in dbt:
+
+        - table
+        - view
+        - incremental
+        - ephemeral
+
+
+    - By default, dbt models are materialized as views.  To override this:
+
+        dbt_project.yml
+        --------------------
+        models:
+          my_project:
+            events:
+              +materialized: table
+
+
+    - Alternatively, materializations can be configured directly inside of the model sql files.
+
+        models/events/stg_event_log.sql
+        ----------------------------------
+        {{ config(materialized='table', sort='timestamp', dist='user_id') }}
+
+        select * from ...
+
+
+    - When using the 'view' materialization, your model is rebuilt as a view on each run via a
+        CREATE VIEW AS statement.
+
+        - Pros: No additional data is stored, so views on top of source data will always have the latest
+                  records in them.
+
+        - Cons: Views that perform significant transformation or are stacked on top of each other are
+                  slow to query.
+
+        - Advice: Start with views for your models, and only change to another materialization when you
+                    notice performance problems.
+
+
+    - When using the 'table' materialization, your model is rebuilt as a table on each run, via a
+        CREATE TABLE AS statement.
+
+        - Pros: Tables are fast to query
+
+        - Cons: Tables can take a long time to rebuild, especially for complex transformations.  New
+                  records in underlying source tables are not automatically added to the table.
+
+        - Advice: Use the table materialization for any models being queried by BI tools.  Also use it for
+                    slower transformations that are being used by many downstream models.
+
+
+    - 'incremental' models allow dbt to insert or update records into a table since the last time dbt was 
+        run.
+
+        - Pros: You can significantly reduce the build time by just transforming new records.
+
+        - Cons: Incremental models require extra configuration and are an an advanced use of dbt.
+
+        - Advice: Incremental models are best for event-style data.  Use incremental models when your runs
+                    are becoming too slow.
+
+
+    - 'ephemeral' models are not directly built into the database.  Instead, dbt will interpolate the code
+        from this model into dependent models as a CTE.
+
+        - Pros: You can still write reusable logic, without adding another item to the warehouse.
+
+        - Cons: You cannot select directly from this model.  Overuse can make queries hard to debug.
+
+        - Advice: Use for very light-weight transformations early in your DAG that are only used for one or
+                    two downstream models.
+
+
+
+- Incremental Models
+
+    - Incremental models are built as tables in your warehouse.  The first time a model is run, the table is
+        built by transforming all rows of source data.  On subsequent runs, dbt transforms only the rows in
+        your source data you tell dbt to filter for, inserting them into the target table that has already
+        been built.

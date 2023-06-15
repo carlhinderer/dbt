@@ -1,0 +1,16 @@
+-----------------------------------------------------------------------
+| QUESTIONS                                                           |
+-----------------------------------------------------------------------
+
+- Does dbt really drop and recreate your tables on every run?
+
+    - In general, the dbt mindset encourages you to move away from thinking about inserting data, then
+        updating other data and dropping a temp table at the end.  Instead, try to think of it as writing
+        a select statement that describes how your table should look at the end, regardless of how it
+        gets there.
+
+    - By default, dbt will drop and re-create a table during each dbt run, which might feel
+        counterintuitive but reduces the amount of mental overhead you have to deal with when building
+        models.
+
+    - If this default approach becomes a performance problem, you can look at creating incremental models.
