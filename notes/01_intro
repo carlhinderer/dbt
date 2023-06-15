@@ -42,7 +42,7 @@
         queries, like if statements and for loops.  This also allows repeated SQL to be shared through
         macros.
 
-    - dbt provides a mechanism to implement transformations in stages through the 'ref function'.  Rather
+    - dbt provides a mechanism to implement transformations in stages through the 'ref' function.  Rather
         than selecting from existing tables, you can select from another model.
 
     - There is a mechanism for writing, version controlling, and sharing documentation for your models.
