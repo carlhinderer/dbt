@@ -1,0 +1,245 @@
+-----------------------------------------------------------------------
+| PART 6 - DBT PROJECTS                                               |
+-----------------------------------------------------------------------
+
+- Project Structure
+
+    - dbt enforces the top-level structure of a dbt project.  Within the directories of the top-level, you
+        can organize the project however you want.
+
+
+    - Every project must have a 'dbt_project.yml' project configuration file.  A project may also include
+        the following resources:
+
+        models        # Each model lives in a single file and contains logic that either transforms raw data
+                      #   or is an intermediate step in such a transformation
+
+        snapshots     # A way to capture the state of your mutable tables so you can refer to it later
+
+        seeds         # CSV files with static data that can be loaded using dbt
+
+        tests         # SQL queries that you can write to test models and resources in your project
+
+        macros        # Blocks of code you can reuse multiple times
+
+        docs          # Docs for your projects that you can build
+
+        sources       # A way to name and describe data loaded into your warehouse by extract and load tools
+
+        exposures     # A way to define and describe a downstream use of your project
+
+        metrics       # A way for you to define metrics for your project
+
+        analysis      # A way to organize analytical SQL queries in your project
+
+
+
+- Project Configuration
+
+    - We can edit the 'dbt_project.yml' project configuration file to set up common configurations:
+
+        name                     # Your project’s name in snake case
+        version                  # Version of your project
+        require-dbt-version      # Restrict your project to only work with a range of dbt Core versions
+        profile                  # The profile dbt uses to connect to your data platform
+        model-paths              # Directories to where your model and source files live
+        seed-paths               # Directories to where your seed files live
+        test-paths               # Directories to where your test files live
+        analysis-paths           # Directories to where your analyses live
+        macro-paths              # Directories to where your macros live
+        snapshot-paths           # Directories to where your snapshots live
+        docs-paths               # Directories to where your docs blocks live
+        vars                     # Project variables you want to use for data compilation
+
+
+
+- Adding Sources to Your DAG
+
+    - Sources make it possible to describe the data loaded into your warehouse by your Extract and Load tools.
+        By declaring these tables as sources in dbt, you can then:
+
+        - Select from source tables in your models using the {{ source() }} function, helping define the lineage
+            of your data
+
+        - Test you assumptions about the source data
+
+        - Calculate the freshness of your source data
+
+
+    - Sources are defined in .yml files nested under a 'sources:' key:
+
+        models/<filename>.yml
+        ---------------------------
+        version: 2
+
+        sources:
+          - name: jaffle_shop
+            database: raw  
+            schema: jaffle_shop      # 'schema' is same as 'name' by default
+            tables:
+              - name: orders
+              - name: customers
+
+
+    - Once a source has been defined, it can be referenced from a model using the {{ source() }} function.
+
+        select ...
+        from {{ source('jaffle_shop', 'orders') }}
+        left join {{ source('jaffle_shop', 'customers') }} using (customer_id)
+
+        # Compiles to the full table name
+        select ...
+        from raw.jaffle_shop.orders
+        left join raw.jaffle_shop.customers using (customer_id)
+
+
+    - You can also add tests and descriptions to sources:
+
+        models/<filename>.sql
+        ---------------------------
+        version: 2
+
+        sources:
+          - name: jaffle_shop
+            description: This is a replica of the Postgres database used by our app
+            tables:
+              - name: orders
+                description: >
+                  One record per order. Includes cancelled and deleted orders.
+                columns:
+                  - name: id
+                    description: Primary key of the orders table
+                    tests:
+                      - unique
+                      - not_null
+                  - name: status
+                    description: Note that the status can change over time
+
+              - name: ...
+
+          - name: ...
+
+
+
+- Snapshotting Source Data Freshness
+
+    - With a couple of extra configs, dbt can optionally snapshot the 'freshness' of the data in your source
+        tables.  This is useful for understanding if your data pipelines are in a healthy state.
+
+
+    - To configure sources to snapshot freshness information, add a 'freshness' block to your source and a
+        'loaded_at_field' to your table declaration.
+
+        models/<filename>.yml
+        ----------------------------
+        version: 2
+
+        sources:
+          - name: jaffle_shop
+            database: raw
+            freshness: # default freshness
+              warn_after: {count: 12, period: hour}
+              error_after: {count: 24, period: hour}
+            loaded_at_field: _etl_loaded_at
+
+            tables:
+              - name: orders
+                freshness: # make this a little more strict
+                  warn_after: {count: 6, period: hour}
+                  error_after: {count: 12, period: hour}
+
+              - name: customers # this will use the freshness defined above
+
+
+              - name: product_skus
+                freshness: null # do not check freshness for this table
+
+
+    - To snapshot freshness information for your sources:
+
+        $ dbt source freshness
+
+
+    - You can also add custom filters to only snapshot freshness on rows that match the filter.
+
+
+
+- dbt Models
+
+    - When you execute 'dbt run', you are running a model that will transform your data without it ever 
+        leaving your warehouse.  Models are primarily written as a 'select' statement and saved as a '.sql'
+        file.  Python models can also be used, which can be useful in data science contexts or when you
+        need a specific Python package's functionality.
+
+
+    - A SQL model is a select statement defined in a .sql file in the 'models' directory.
+
+        - Each .sql file contains one model / select statement
+        - The model name is inherited from the filename
+        - Models can be nested in subdirectories within the 'models' directory
+
+
+    - When you execute the 'dbt run' command, dbt will build this model in the data warehouse by wrapping
+        it in a 'CREATE VIEW AS' or 'CREATE TABLE AS' statement.
+
+
+    - The 'ref' function can be used to build dependencies between models.
+
+
+
+- Configuring Models
+
+    - Configurations for models can be set either in the 'dbt_project.yml' file or in the model with a 
+        {{ config }} block.  Configurations include changing the materialization, changing the schema, or
+        adding tags.
+
+
+    - To add configurations in the project file:
+
+        dbt_project.yml
+        ---------------------
+        name: jaffle_shop
+        config-version: 2
+        ...
+
+        models:
+          jaffle_shop: # this matches the `name:`` config
+            +materialized: view # this applies to all models in the current project
+            marts:
+              +materialized: table # this applies to all models in the `marts/` directory
+              marketing:
+                +schema: marketing # this applies to all models in the `marts/marketing/`` directory
+
+
+    - To add configurations in the model:
+
+        models/customer.yml
+        ---------------------
+        {{ config(
+            materialized="view",
+            schema="marketing"
+        ) }}
+
+        with customer_orders as ...
+
+
+
+
+- Python Models
+
+    - Python models are supported on Snowflake, Databricks, and BigQuery.  Databricks and BigQuery's Dataproc
+        use PySpark as their processing framework.  Snowflake uses Snowpark, which is similar to PySpark.
+
+
+    - To define a Python model:
+
+        models/my_python_model.py
+        -----------------------------
+        def model(dbt, session):
+            dbt.config(
+                materialized = "table",
+                packages = ["holidays"]
+            )
+
+            orders_df = dbt.ref("stg_orders")
+            return orders_df
